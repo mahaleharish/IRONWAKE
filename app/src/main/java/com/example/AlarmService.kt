@@ -1,0 +1,211 @@
+package com.example
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.RingtoneManager
+import android.net.Uri
+import android.os.Build
+import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.example.data.database.AppDatabase
+import com.example.data.model.UserSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+class AlarmService : Service() {
+
+    private var mediaPlayer: MediaPlayer? = null
+    private var vibrator: Vibrator? = null
+    private var volumeJob: Job? = null
+    private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+
+    companion object {
+        private const val CHANNEL_ID = "IronWakeAlarmChannel"
+        private const val NOTIFICATION_ID = 881
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val alarmLabel = intent?.getStringExtra("ALARM_LABEL") ?: "Wake Up & Train!"
+        val alarmId = intent?.getIntExtra("ALARM_ID", -1) ?: -1
+
+        // 1. Build and show the foreground notification immediately
+        val notification = buildForegroundNotification(alarmLabel)
+        startForeground(NOTIFICATION_ID, notification)
+
+        // 2. Fetch database settings dynamically and trigger Audio & Vibe routines
+        serviceScope.launch {
+            try {
+                val settings = AppDatabase.getDatabase(applicationContext).userSettingsDao().getSettings() 
+                    ?: UserSettings()
+                
+                triggerAlarmMedia(settings)
+            } catch (e: Exception) {
+                Log.e("AlarmService", "Error reading settings: ${e.message}")
+                // Fallback run with defaults
+                triggerAlarmMedia(UserSettings())
+            }
+        }
+
+        return START_STICKY
+    }
+
+    private fun triggerAlarmMedia(settings: UserSettings) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+
+        // Determine target volume level based on user config
+        val targetVolumeFraction = when (settings.volumeLevel) {
+            "Low" -> 0.25f
+            "Mid" -> 0.50f
+            "High" -> 0.75f
+            "Superhigh" -> 1.00f
+            else -> 0.50f
+        }
+        val targetVolume = (maxVolume * targetVolumeFraction).toInt().coerceAtLeast(1)
+
+        // Force volume to limit for Superhigh blast mode
+        if (settings.volumeLevel == "Superhigh") {
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0)
+        } else {
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, targetVolume, 0)
+        }
+
+        // Initialize Media Player
+        try {
+            var alarmUri: Uri? = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            if (alarmUri == null) {
+                alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            }
+            
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(applicationContext, alarmUri!!)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                isLooping = true
+                prepare()
+                start()
+            }
+            
+            // Handle Progressive Volume Increase if toggled
+            if (settings.progressivelyIncreaseVolume) {
+                val startVolume = 1.coerceAtMost(targetVolume / 4)
+                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, startVolume, 0)
+                
+                volumeJob?.cancel()
+                volumeJob = serviceScope.launch {
+                    var currentVol = startVolume
+                    while (currentVol < targetVolume) {
+                        delay(3000) // Increase every 3 seconds
+                        currentVol += 1
+                        val finalVol = currentVol.coerceAtMost(targetVolume)
+                        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, finalVol, 0)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Failed to setup audio playback: ${e.message}")
+        }
+
+        // Initialize Haptic Vibration
+        try {
+            vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            val pattern = longArrayOf(0, 700, 400) // Vibrate 700ms, pause 400ms
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(pattern, 0)
+            }
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Failed to start vibration: ${e.message}")
+        }
+    }
+
+    private fun buildForegroundNotification(label: String): Notification {
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            992,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopIntent = Intent(this, AlarmReceiver::class.java).apply {
+            action = "com.example.ACTION_STOP_ALARM" // Fallback fallback route
+        }
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            this,
+            993,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("IronWake Alarm Ringing")
+            .setContentText(label)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setContentIntent(pendingIntent)
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "IronWake Active Alarm Channel",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notification service channel for active morning alarms."
+                setBypassDnd(true)
+                enableLights(true)
+                enableVibration(true)
+            }
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    override fun onDestroy() {
+        volumeJob?.cancel()
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Error stopping player: ${e.message}")
+        }
+        try {
+            vibrator?.cancel()
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Error stopping vibrator: ${e.message}")
+        }
+        super.onDestroy()
+    }
+}

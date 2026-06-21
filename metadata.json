@@ -1,0 +1,6 @@
+{
+  "name": "IronWake Alarm",
+  "description": "Hardcore fitness alarm app that forces pattern tracing over motivational gym backgrounds to snooze or dismiss.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
