@@ -11,6 +11,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,7 +52,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.animation.core.*
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.foundation.BorderStroke
 
 class AlarmRingingActivity : ComponentActivity() {
 
@@ -70,6 +73,8 @@ class AlarmRingingActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
+            val keyguardManager = getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+            keyguardManager?.requestDismissKeyguard(this, null)
         } else {
             @Suppress("DEPRECATION")
             window.addFlags(
@@ -105,6 +110,15 @@ class AlarmRingingActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        alarmId = intent.getIntExtra("ALARM_ID", -1)
+        alarmLabel = intent.getStringExtra("ALARM_LABEL") ?: "Wake Up & Train!"
+        alarmHour = intent.getIntExtra("ALARM_HOUR", 6)
+        alarmMinute = intent.getIntExtra("ALARM_MINUTE", 0)
+    }
+
     private fun handleUnlockResult(isSnooze: Boolean) {
         val database = AppDatabase.getDatabase(applicationContext)
         val scheduler = AlarmScheduler(applicationContext)
@@ -128,7 +142,7 @@ class AlarmRingingActivity : ComponentActivity() {
 
                 // Insert a temporary one-off alarm in our DB to trigger
                 val snoozeAlarm = Alarm(
-                    id = 9999 + (1..100).random(), // temporary snooze ID range
+                    id = if (alarmId != -1) (100000 + alarmId) else (9999 + (1..100).random()), // temporary snooze ID range
                     hour = currentHour,
                     minute = currentMin,
                     label = "$alarmLabel (Snoozed)",
@@ -177,6 +191,25 @@ fun RingingScreenContent(
     val database = AppDatabase.getDatabase(context)
     var settings by remember { mutableStateOf<UserSettings?>(null) }
     var patternMatched by remember { mutableStateOf(false) }
+    var activeMode by remember { mutableStateOf("SNOOZE") } // "SNOOZE" or "STOP"
+    var snoozePattern by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var stopPattern by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var isDraggingPattern by remember { mutableStateOf(false) }
+    
+    val selectedQuote = remember {
+        listOf(
+            "\"The only bad workout is the one that didn't happen.\"",
+            "\"No alarm has power over a spirit waiting to conquer.\"",
+            "\"Pain is temporary. Pride is forever. Get up and grind.\"",
+            "\"Defeat the bed, conquer the day. Rise and build the shield.\"",
+            "\"Your dream body and life aren't built in your sleep.\"",
+            "\"Iron does not lie. It tells you exactly how hard you worked.\"",
+            "\"The sweat of today is the strength of tomorrow.\"",
+            "\"Excuses don't build muscles. Action does.\"",
+            "\"Comfort is the enemy of progress. Step outside the zone.\"",
+            "\"Success is rented, and rent is due every single morning.\""
+        ).random()
+    }
 
     // Live Clock State
     var currentTimeString by remember { mutableStateOf("05:00") }
@@ -186,6 +219,18 @@ fun RingingScreenContent(
         withContext(Dispatchers.IO) {
             settings = database.userSettingsDao().getSettings() ?: UserSettings()
         }
+    }
+
+    LaunchedEffect(settings) {
+        val finalSettings = settings ?: UserSettings()
+        val finalGridSize = if (finalSettings.patternDifficulty == "4x4") 4 else 3
+        snoozePattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 5 else 4)
+        stopPattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 8 else 6)
+    }
+
+    // Reset patternMatched when activeMode changes!
+    LaunchedEffect(activeMode) {
+        patternMatched = false
     }
 
     LaunchedEffect(Unit) {
@@ -226,8 +271,6 @@ fun RingingScreenContent(
 
     val finalSettings = settings ?: UserSettings()
     val gridSize = if (finalSettings.patternDifficulty == "4x4") 4 else 3
-    // Correct target connection path for match recognition standard (e.g. at least 4 nodes)
-    val requiredLength = 4
 
     // Pulse animation for max volume indicator
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -261,7 +304,7 @@ fun RingingScreenContent(
                     )
                 )
             ),
-            alpha = 0.45f,
+            alpha = 0.82f,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -272,62 +315,44 @@ fun RingingScreenContent(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.35f),
-                            Color.Black.copy(alpha = 0.70f),
-                            Color.Black
+                            Color.Black.copy(alpha = 0.15f),
+                            Color.Black.copy(alpha = 0.45f),
+                            Color.Black.copy(alpha = 0.85f)
                         )
                     )
                 )
         )
 
-        // Dynamic gym background canvas lines (behind grid)
-        GymMotivationalCanvas(index = illustrationIndex)
-
-        // 2. Volume indicator bar on Left Edge
-        val volumeFraction = when (finalSettings.volumeLevel) {
-            "Low" -> 0.25f
-            "Mid" -> 0.50f
-            "High" -> 0.75f
-            "Superhigh" -> 1.00f
-            else -> 0.50f
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 6.dp)
-                .width(4.dp)
-                .height(280.dp)
-                .background(HardcoreSteel, RoundedCornerShape(2.dp))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(volumeFraction)
-                    .align(Alignment.BottomStart)
-                    .background(NeonGreen, RoundedCornerShape(2.dp))
-            )
-        }
-
         // Main layout items
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(scrollState, enabled = !isDraggingPattern)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             
             // Top Bar / Clock Info
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 28.dp)
+                modifier = Modifier.padding(top = 16.dp)
             ) {
                 Text(
-                    text = "WAKE UP THE BEAST",
+                    text = "AWAKEN YOUR POTENTIAL",
                     color = NeonGreen,
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        letterSpacing = 4.sp,
-                        fontWeight = FontWeight.ExtraBold
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        letterSpacing = 4.2.sp,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        shadow = Shadow(
+                            color = NeonGreen.copy(alpha = 0.6f),
+                            offset = Offset(0f, 0f),
+                            blurRadius = 12f
+                        )
                     ),
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
@@ -337,7 +362,7 @@ fun RingingScreenContent(
                     style = TextStyle(
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Black,
-                        fontSize = 86.sp,
+                        fontSize = 72.sp,
                         color = Color.White,
                         shadow = Shadow(
                             color = NeonGreen.copy(alpha = 0.5f),
@@ -354,42 +379,101 @@ fun RingingScreenContent(
                         letterSpacing = 1.5.sp,
                         fontWeight = FontWeight.Bold
                     ),
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
             // Pattern Trace Grid (Center Section)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.wrapContentSize()
+                modifier = Modifier.wrapContentSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(
-                    text = "REQUIRED TRACE: STRENGTH PATTERN",
-                    color = NeonCyan,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        letterSpacing = 2.sp
-                    ),
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-                
+                // Action Choice Toggles (Tactile Segmented Button Style)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Button(
+                        onClick = { 
+                            activeMode = "SNOOZE"
+                            patternMatched = false
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activeMode == "SNOOZE") NeonCyan else Color.Transparent,
+                            contentColor = if (activeMode == "SNOOZE") TrueBlack else Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "SNOOZE ALARM",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.sp)
+                        )
+                    }
+                    Button(
+                        onClick = { 
+                            activeMode = "STOP"
+                            patternMatched = false
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activeMode == "STOP") BrightRed else Color.Transparent,
+                            contentColor = if (activeMode == "STOP") Color.White else Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "STOP ALARM",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.sp)
+                        )
+                    }
+                }
+
                 Box(
                     modifier = Modifier
-                        .size(290.dp)
-                        .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
-                        .padding(12.dp)
+                        .size(270.dp)
+                        .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(24.dp))
+                        .padding(10.dp)
                 ) {
-                    PatternTraceGrid(
-                        gridSize = gridSize,
-                        patternColor = if (patternMatched) NeonCyan else NeonGreen,
-                        onPatternComplete = { trace ->
-                            if (trace.size >= requiredLength) {
-                                patternMatched = true
-                            } else {
-                                patternMatched = false
+                    val currentTargetPattern = if (activeMode == "SNOOZE") snoozePattern else stopPattern
+                    androidx.compose.runtime.key(activeMode) {
+                        PatternTraceGrid(
+                            gridSize = gridSize,
+                            patternColor = if (patternMatched) (if (activeMode == "SNOOZE") NeonCyan else BrightRed) else NeonGreen,
+                            correctPattern = currentTargetPattern,
+                            onPatternComplete = { trace ->
+                                if (trace == currentTargetPattern) {
+                                    patternMatched = true
+                                } else {
+                                    patternMatched = false
+                                    if (trace.size < currentTargetPattern.size) {
+                                        Toast.makeText(context, "TRACE INCOMPLETE! KEEP TRACING FORWARD!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "TRACE MISMATCH! A new trace path proposed.", Toast.LENGTH_SHORT).show()
+                                        val finalGridSize = if (finalSettings.patternDifficulty == "4x4") 4 else 3
+                                        if (activeMode == "SNOOZE") {
+                                            snoozePattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 5 else 4)
+                                        } else {
+                                            stopPattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 8 else 6)
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            onDragStateChanged = { dragging ->
+                                isDraggingPattern = dragging
                             }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                        )
+                    }
                 }
             }
 
@@ -397,16 +481,16 @@ fun RingingScreenContent(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp),
+                    .padding(bottom = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 
                 // Motivational Quote
                 Text(
-                    text = "\"The only bad workout is the one that didn't happen.\"",
+                    text = selectedQuote,
                     color = Color.White.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.bodyLarge.copy(
+                    style = MaterialTheme.typography.bodyMedium.copy(
                         fontStyle = FontStyle.Italic,
                         fontWeight = FontWeight.Medium
                     ),
@@ -417,101 +501,70 @@ fun RingingScreenContent(
                 // Controls row
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // SNOOZE control
+                    val canSnooze = activeMode == "SNOOZE" && patternMatched
                     Button(
                         onClick = {
-                            if (patternMatched) {
+                            if (canSnooze) {
                                 onUnlocked(true)
+                            } else if (activeMode != "SNOOZE") {
+                                activeMode = "SNOOZE"
+                                Toast.makeText(context, "SNOOZE CHASE DEPLOYED: TRACE THE MOVEMENT!", Toast.LENGTH_SHORT).show()
                             } else {
-                                Toast.makeText(context, "TRACE PATTERN TO UNLOCK SNOOZE", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "TRACE THE MOVEMENT TO SNOOZE", Toast.LENGTH_SHORT).show()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (patternMatched) HardcoreSteel else MetalGray.copy(alpha = 0.5f),
-                            contentColor = if (patternMatched) Color.White else Color.Gray
+                            containerColor = if (canSnooze) NeonCyan else MetalGray.copy(alpha = 0.5f),
+                            contentColor = if (canSnooze) TrueBlack else Color.Gray
                         ),
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(60.dp),
-                        border = if (patternMatched) BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)) else null
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                "SNOOZE",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 2.sp
-                                )
-                            )
-                            if (!patternMatched) {
-                                Text(
-                                    " (LOCKED)",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = Color.White.copy(alpha = 0.3f),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                )
-                            }
-                        }
-                    }
-
-                    // DISMISS control
-                    Button(
-                        onClick = {
-                            if (patternMatched) {
-                                onUnlocked(false)
-                            } else {
-                                Toast.makeText(context, "TRACE PATTERN TO UNLOCK DISMISS BUTTON", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (patternMatched) NeonGreen else Color.DarkGray.copy(alpha = 0.3f),
-                            contentColor = if (patternMatched) TrueBlack else Color.Gray
-                        ),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(60.dp)
+                            .height(52.dp),
+                        border = if (canSnooze) BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)) else null
                     ) {
                         Text(
-                            text = if (patternMatched) "DISMISS ALARM" else "🔒 TRACE FIRST",
+                            "SNOOZE ALARM",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 2.sp
                             )
                         )
                     }
-                }
 
-                // Max Volume Pulse Indicator
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(top = 4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(
-                                color = BrightRed.copy(alpha = indicatorAlpha),
-                                shape = CircleShape
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "MAX VOLUME ACTIVE",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            letterSpacing = 1.sp
+                    // DISMISS control
+                    val canDismiss = activeMode == "STOP" && patternMatched
+                    Button(
+                        onClick = {
+                            if (canDismiss) {
+                                onUnlocked(false)
+                            } else if (activeMode != "STOP") {
+                                activeMode = "STOP"
+                                Toast.makeText(context, "STOP CHASE DEPLOYED: TRACE THE COMPLEX PATTERN!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "TRACE THE ADVANCED SEQUENCE TO DISMISS", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (canDismiss) BrightRed else Color.DarkGray.copy(alpha = 0.3f),
+                            contentColor = if (canDismiss) Color.White else Color.Gray
                         ),
-                        color = BrightRed,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        Text(
+                            text = "DISMISS ALARM",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.5.sp
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -526,77 +579,61 @@ fun GymMotivationalCanvas(index: Int) {
         val w = size.width
         val h = size.height
 
-        when (index) {
-            0, 3 -> { // Circular metallic barbell structure representation (Male Theme)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(NeonGreen.copy(alpha = 0.15f), Color.Transparent),
-                        center = Offset(w / 2, h / 2),
-                        radius = w * 0.75f
-                    )
-                )
-                // Draw 45 LBS plates silhouettes
-                drawCircle(
-                    color = MetalGray,
-                    radius = w * 0.25f,
-                    center = Offset(w / 2, h * 0.35f),
-                    style = Stroke(width = 30.dp.toPx())
-                )
-                drawCircle(
-                    color = NeonGreen,
-                    radius = w * 0.30f,
-                    center = Offset(w / 2, h * 0.35f),
-                    style = Stroke(width = 2.dp.toPx())
-                )
+        val color = when (index) {
+            0, 3 -> NeonGreen
+            1, 4 -> NeonCyan
+            2, 5 -> BrightRed
+            else -> NeonGreen
+        }
+
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(color.copy(alpha = 0.12f), Color.Transparent),
+                center = Offset(w / 2, h * 0.4f),
+                radius = w * 0.8f
+            )
+        )
+    }
+}
+
+private fun generateRandomPattern(gridSize: Int, length: Int): List<Int> {
+    val totalNodes = gridSize * gridSize
+    var attempts = 0
+    while (attempts < 100) {
+        attempts++
+        val path = mutableListOf<Int>()
+        var current = (0 until totalNodes).random()
+        path.add(current)
+        
+        var stuck = false
+        for (step in 1 until length) {
+            val r = current / gridSize
+            val c = current % gridSize
+            val neighbors = mutableListOf<Int>()
+            for (dr in -1..1) {
+                for (dc in -1..1) {
+                    if (dr == 0 && dc == 0) continue
+                    val nr = r + dr
+                    val nc = c + dc
+                    if (nr in 0 until gridSize && nc in 0 until gridSize) {
+                        val nIdx = nr * gridSize + nc
+                        if (!path.contains(nIdx)) {
+                            neighbors.add(nIdx)
+                        }
+                    }
+                }
             }
-            1, 4 -> { // Biceps flex arm drawing silhouette simulation (Female Theme)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(NeonCyan.copy(alpha = 0.15f), Color.Transparent),
-                        center = Offset(w / 2, h / 3),
-                        radius = w
-                    )
-                )
-                // Draw dynamic neon bars
-                drawLine(
-                    color = NeonCyan,
-                    start = Offset(w * 0.15f, h * 0.3f),
-                    end = Offset(w * 0.85f, h * 0.3f),
-                    strokeWidth = 8.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
+            if (neighbors.isEmpty()) {
+                stuck = true
+                break
             }
-            2, 5 -> { // Dumbbell cross barbell stand (Mixed Theme)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(BrightRed.copy(alpha = 0.12f), Color.Transparent),
-                        center = Offset(w / 2, h / 2),
-                        radius = w * 0.9f
-                    )
-                )
-                // Geometric workout cross lines
-                drawLine(
-                    color = ShinySteel,
-                    start = Offset(w * 0.2f, h * 0.2f),
-                    end = Offset(w * 0.8f, h * 0.5f),
-                    strokeWidth = 12.dp.toPx()
-                )
-                drawLine(
-                    color = ShinySteel,
-                    start = Offset(w * 0.8f, h * 0.2f),
-                    end = Offset(w * 0.2f, h * 0.5f),
-                    strokeWidth = 12.dp.toPx()
-                )
-            }
-            else -> { // Standard metallic gradient structure
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(NeonGreen.copy(alpha = 0.10f), Color.Transparent),
-                        center = Offset(w / 2, h / 2),
-                        radius = w * 0.8f
-                    )
-                )
-            }
+            current = neighbors.random()
+            path.add(current)
+        }
+        if (!stuck && path.size == length) {
+            return path
         }
     }
+    // Fallback if somehow stuck too many times
+    return (0 until totalNodes).shuffled().take(length)
 }

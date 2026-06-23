@@ -48,9 +48,11 @@ class AlarmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val alarmLabel = intent?.getStringExtra("ALARM_LABEL") ?: "Wake Up & Train!"
         val alarmId = intent?.getIntExtra("ALARM_ID", -1) ?: -1
+        val alarmHour = intent?.getIntExtra("ALARM_HOUR", 6) ?: 6
+        val alarmMinute = intent?.getIntExtra("ALARM_MINUTE", 0) ?: 0
 
         // 1. Build and show the foreground notification immediately
-        val notification = buildForegroundNotification(alarmLabel)
+        val notification = buildForegroundNotification(alarmId, alarmLabel, alarmHour, alarmMinute)
         startForeground(NOTIFICATION_ID, notification)
 
         // 2. Fetch database settings dynamically and trigger Audio & Vibe routines
@@ -146,33 +148,33 @@ class AlarmService : Service() {
         }
     }
 
-    private fun buildForegroundNotification(label: String): Notification {
-        val intent = Intent(this, MainActivity::class.java)
+    private fun buildForegroundNotification(alarmId: Int, label: String, hour: Int, minute: Int): Notification {
+        val ringingIntent = Intent(this, AlarmRingingActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("ALARM_ID", alarmId)
+            putExtra("ALARM_LABEL", label)
+            putExtra("ALARM_HOUR", hour)
+            putExtra("ALARM_MINUTE", minute)
+        }
+
         val pendingIntent = PendingIntent.getActivity(
             this,
-            992,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val stopIntent = Intent(this, AlarmReceiver::class.java).apply {
-            action = "com.example.ACTION_STOP_ALARM" // Fallback fallback route
-        }
-        val stopPendingIntent = PendingIntent.getBroadcast(
-            this,
-            993,
-            stopIntent,
+            992 + (if (alarmId != -1) alarmId else 0),
+            ringingIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("IronWake Alarm Ringing")
-            .setContentText(label)
+            .setContentTitle("WAKE UP THE BEAST")
+            .setContentText(label.uppercase())
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setOngoing(true)
+            .setAutoCancel(false)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(pendingIntent, true)
             .setContentIntent(pendingIntent)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 

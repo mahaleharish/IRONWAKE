@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.nativeCanvas
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.ShinySteel
@@ -28,11 +29,34 @@ fun PatternTraceGrid(
     patternColor: Color = NeonGreen,
     correctPattern: List<Int> = listOf(0, 1, 2, 4, 6), // Suggested Z or similar connection
     onPatternComplete: (List<Int>) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDragStateChanged: (Boolean) -> Unit = {}
 ) {
     var connectedDots by remember { mutableStateOf<List<Int>>(emptyList()) }
     var currentTouchPoint by remember { mutableStateOf<Offset?>(null) }
     var isError by remember { mutableStateOf(false) }
+    var highlightedDotIndex by remember { mutableStateOf<Int?>(null) }
+
+    // Sequential guide animation to highlight correct pattern nodes one-by-one
+    androidx.compose.runtime.LaunchedEffect(correctPattern, connectedDots) {
+        if (connectedDots.isNotEmpty()) {
+            highlightedDotIndex = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            if (correctPattern.isEmpty()) {
+                highlightedDotIndex = null
+                kotlinx.coroutines.delay(1000)
+                continue
+            }
+            for (dot in correctPattern) {
+                highlightedDotIndex = dot
+                kotlinx.coroutines.delay(700)
+            }
+            highlightedDotIndex = null
+            kotlinx.coroutines.delay(1200)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -45,6 +69,7 @@ fun PatternTraceGrid(
                 .pointerInput(gridSize) {
                     detectDragGestures(
                         onDragStart = { startOffset ->
+                            onDragStateChanged(true)
                             isError = false
                             connectedDots = emptyList()
                             currentTouchPoint = startOffset
@@ -60,12 +85,14 @@ fun PatternTraceGrid(
                                 hitRadius = 35.dp.toPx()
                             )
                             if (hitIndex != -1) {
-                                connectedDots = listOf(hitIndex)
+                                if (correctPattern.isNotEmpty() && hitIndex == correctPattern[0]) {
+                                    connectedDots = listOf(hitIndex)
+                                }
                             }
                         },
-                        onDrag = { change, dragAmount ->
+                        onDrag = { change, _ ->
                             change.consume()
-                            val nextPoint = currentTouchPoint?.let { it + dragAmount } ?: change.position
+                            val nextPoint = change.position
                             currentTouchPoint = nextPoint
                             
                             val cellWidth = size.width.toFloat() / (gridSize + 1)
@@ -79,7 +106,16 @@ fun PatternTraceGrid(
                             )
                             
                             if (hitIndex != -1 && !connectedDots.contains(hitIndex)) {
-                                connectedDots = connectedDots + hitIndex
+                                if (connectedDots.isEmpty()) {
+                                    if (correctPattern.isNotEmpty() && hitIndex == correctPattern[0]) {
+                                        connectedDots = listOf(hitIndex)
+                                    }
+                                } else {
+                                    val expectedNextIndex = correctPattern.getOrNull(connectedDots.size)
+                                    if (hitIndex == expectedNextIndex) {
+                                        connectedDots = connectedDots + hitIndex
+                                    }
+                                }
                             }
                         },
                         onDragEnd = {
@@ -88,16 +124,49 @@ fun PatternTraceGrid(
                             }
                             currentTouchPoint = null
                             connectedDots = emptyList()
+                            onDragStateChanged(false)
                         },
                         onDragCancel = {
                             currentTouchPoint = null
                             connectedDots = emptyList()
+                            onDragStateChanged(false)
                         }
                     )
                 }
         ) {
             val cellWidth = size.width / (gridSize + 1)
             val cellHeight = size.height / (gridSize + 1)
+
+            // 0. Draw faint sequential guide lines for correctPattern sequence
+            if (correctPattern.size > 1) {
+                for (i in 0 until correctPattern.size - 1) {
+                    val dot1 = correctPattern[i]
+                    val dot2 = correctPattern[i + 1]
+
+                    val r1 = dot1 / gridSize
+                    val c1 = dot1 % gridSize
+                    val r2 = dot2 / gridSize
+                    val c2 = dot2 % gridSize
+
+                    val p1 = Offset((c1 + 1) * cellWidth, (r1 + 1) * cellHeight)
+                    val p2 = Offset((c2 + 1) * cellWidth, (r2 + 1) * cellHeight)
+
+                    drawLine(
+                        color = patternColor.copy(alpha = 0.20f),
+                        start = p1,
+                        end = p2,
+                        strokeWidth = 4.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
+            val textPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.WHITE
+                textSize = 12.dp.toPx()
+                textAlign = android.graphics.Paint.Align.CENTER
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+            }
 
             // 1. Draw dot positions representing target pattern (dim neon background helper)
             for (row in 0 until gridSize) {
@@ -109,31 +178,66 @@ fun PatternTraceGrid(
                     // Draw outer metallic shell
                     drawCircle(
                         color = ShinySteel,
-                        radius = 18.dp.toPx(),
+                        radius = 20.dp.toPx(),
                         center = Offset(cx, cy)
                     )
+
+                    // Highlight target dots with concentric halos
+                    val inCorrectPattern = correctPattern.contains(index)
+                    if (inCorrectPattern) {
+                        drawCircle(
+                            color = patternColor.copy(alpha = 0.4f),
+                            radius = 24.dp.toPx(),
+                            center = Offset(cx, cy),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                        )
+                    }
+
+                    // Draw animated sequential guide glow
+                    val isSeqHighlighted = index == highlightedDotIndex
+                    if (isSeqHighlighted) {
+                        drawCircle(
+                            color = patternColor.copy(alpha = 0.75f),
+                            radius = 29.dp.toPx(),
+                            center = Offset(cx, cy),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
+                        )
+                    }
 
                     // Draw connection center
                     val isConnected = connectedDots.contains(index)
                     val dotColor = when {
                         isConnected -> patternColor
-                        correctPattern.contains(index) -> NeonCyan.copy(alpha = 0.35f)
+                        inCorrectPattern -> patternColor.copy(alpha = 0.35f)
                         else -> Color.DarkGray
                     }
-                    val pulseRadius = if (isConnected) 10.dp.toPx() else 6.dp.toPx()
+                    val pulseRadius = if (isConnected) 12.dp.toPx() else 8.dp.toPx()
                     drawCircle(
                         color = dotColor,
                         radius = pulseRadius,
                         center = Offset(cx, cy)
                     )
+
+                    // If it is in correct pattern, draw sequence index
+                    if (inCorrectPattern) {
+                        val seqNum = correctPattern.indexOf(index) + 1
+                        val textY = cy + (textPaint.textSize / 3f)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            seqNum.toString(),
+                            cx,
+                            textY,
+                            textPaint
+                        )
+                    }
                 }
             }
 
-            // 2. Draw tracing lines
-            if (connectedDots.isNotEmpty()) {
-                for (i in 0 until connectedDots.size - 1) {
-                    val dot1 = connectedDots[i]
-                    val dot2 = connectedDots[i + 1]
+            // 2. Draw active tracing lines done by user (or persist successfully matched lines)
+            val dotsToDraw = if (patternColor != NeonGreen) correctPattern else connectedDots
+            if (dotsToDraw.isNotEmpty()) {
+                for (i in 0 until dotsToDraw.size - 1) {
+                    val dot1 = dotsToDraw[i]
+                    val dot2 = dotsToDraw[i + 1]
 
                     val r1 = dot1 / gridSize
                     val c1 = dot1 % gridSize
@@ -153,19 +257,21 @@ fun PatternTraceGrid(
                 }
 
                 // Draw line to current touch finger position
-                currentTouchPoint?.let { touch ->
-                    val lastDot = connectedDots.last()
-                    val r = lastDot / gridSize
-                    val c = lastDot % gridSize
-                    val lastDotCenter = Offset((c + 1) * cellWidth, (r + 1) * cellHeight)
+                if (connectedDots.isNotEmpty()) {
+                    currentTouchPoint?.let { touch ->
+                        val lastDot = connectedDots.last()
+                        val r = lastDot / gridSize
+                        val c = lastDot % gridSize
+                        val lastDotCenter = Offset((c + 1) * cellWidth, (r + 1) * cellHeight)
 
-                    drawLine(
-                        color = patternColor.copy(alpha = 0.8f),
-                        start = lastDotCenter,
-                        end = touch,
-                        strokeWidth = 4.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
+                        drawLine(
+                            color = patternColor.copy(alpha = 0.8f),
+                            start = lastDotCenter,
+                            end = touch,
+                            strokeWidth = 4.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                 }
             }
         }

@@ -26,9 +26,12 @@ class AlarmScheduler(private val context: Context) {
 
         val triggerTime = calculateNextTriggerTime(alarm)
 
+        val isSnooze = alarm.id >= 100000
+        val parentId = if (isSnooze) alarm.id - 100000 else alarm.id
+
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = "com.example.ACTION_TRIGGER_ALARM"
-            putExtra("ALARM_ID", alarm.id)
+            putExtra("ALARM_ID", parentId)
             putExtra("ALARM_LABEL", alarm.label)
             putExtra("ALARM_HOUR", alarm.hour)
             putExtra("ALARM_MINUTE", alarm.minute)
@@ -63,19 +66,28 @@ class AlarmScheduler(private val context: Context) {
     }
 
     fun cancel(alarm: Alarm) {
+        // Cancel the regular alarm
+        cancelWithId(alarm.id)
+        
+        // Also cancel any corresponding snooze alarm for this alarm
+        cancelWithId(100000 + alarm.id)
+    }
+
+    private fun cancelWithId(id: Int) {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = "com.example.ACTION_TRIGGER_ALARM"
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
-            alarm.id,
+            id,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         if (pendingIntent != null) {
             alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
         }
-        Log.d("AlarmScheduler", "Alarm canceled for ID ${alarm.id}")
+        Log.d("AlarmScheduler", "Alarm canceled for ID $id")
     }
 
     private fun calculateNextTriggerTime(alarm: Alarm): Long {

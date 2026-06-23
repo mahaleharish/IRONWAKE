@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,10 +26,30 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontStyle
+import java.util.Calendar
+import kotlinx.coroutines.launch
 import com.example.data.model.Alarm
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.AlarmViewModel
+
+private val homeQuotes = listOf(
+    "The only bad workout is the one that didn't happen.",
+    "No alarm has power over a spirit waiting to conquer.",
+    "Pain is temporary. Pride is forever. Get up and grind.",
+    "Defeat the bed, conquer the day. Rise and build the shield.",
+    "Your dream body and life aren't built in your sleep.",
+    "Iron does not lie. It tells you exactly how hard you worked.",
+    "The sweat of today is the strength of tomorrow.",
+    "Excuses don't build muscles. Action does.",
+    "Comfort is the enemy of progress. Step outside the zone.",
+    "Success is rented, and rent is due every single morning."
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,7 +134,7 @@ fun AlarmListScreen(
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp, top = 8.dp)
+                    contentPadding = PaddingValues(bottom = 155.dp, top = 8.dp)
                 ) {
                     items(alarms, key = { it.id }) { alarm ->
                         AlarmRowItem(
@@ -124,6 +145,57 @@ fun AlarmListScreen(
                                 editingAlarm = alarm
                                 isFormDialogOpen = true
                             }
+                        )
+                    }
+                }
+            }
+
+            // Sticky Translucent Bottom Motivational Message Card
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                TrueBlack.copy(alpha = 0.85f),
+                                TrueBlack
+                            )
+                        )
+                    )
+                    .padding(bottom = 96.dp, top = 16.dp, start = 20.dp, end = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MetalGray.copy(alpha = 0.85f)
+                    ),
+                    border = BorderStroke(1.dp, NeonGreen.copy(alpha = 0.25f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("home_motivational_quote")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "⚡",
+                            fontSize = 20.sp,
+                            color = NeonGreen
+                        )
+                        val quote = remember { homeQuotes.random() }
+                        Text(
+                            text = "\"$quote\"",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontStyle = FontStyle.Italic,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = Color.White.copy(alpha = 0.9f)
                         )
                     }
                 }
@@ -299,14 +371,188 @@ fun EmptyStateView() {
     }
 }
 
+private fun mapToCalendarDay(day: Int): Int {
+    return when(day) {
+        1 -> Calendar.MONDAY
+        2 -> Calendar.TUESDAY
+        3 -> Calendar.WEDNESDAY
+        4 -> Calendar.THURSDAY
+        5 -> Calendar.FRIDAY
+        6 -> Calendar.SATURDAY
+        7 -> Calendar.SUNDAY
+        else -> Calendar.MONDAY
+    }
+}
+
+private fun calculateNextAlarmDuration(hour: Int, minute: Int, repeatDays: Set<Int>): Pair<Int, Int> {
+    val now = Calendar.getInstance()
+    var target = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, minute)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    if (repeatDays.isEmpty()) {
+        if (target.before(now)) {
+            target.add(Calendar.DAY_OF_YEAR, 1)
+        }
+    } else {
+        var minDiffMs = Long.MAX_VALUE
+        var bestTarget: Calendar? = null
+        
+        for (day in repeatDays) {
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            
+            val calendarDay = mapToCalendarDay(day)
+            val currentDayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+            var daysDiff = calendarDay - currentDayOfWeek
+            if (daysDiff < 0) {
+                daysDiff += 7
+            } else if (daysDiff == 0) {
+                if (cal.before(now)) {
+                    daysDiff = 7
+                }
+            }
+            cal.add(Calendar.DAY_OF_YEAR, daysDiff)
+            
+            val diffMs = cal.timeInMillis - now.timeInMillis
+            if (diffMs > 0 && diffMs < minDiffMs) {
+                minDiffMs = diffMs
+                bestTarget = cal
+            }
+        }
+        if (bestTarget != null) {
+            target = bestTarget
+        } else {
+            if (target.before(now)) {
+                target.add(Calendar.DAY_OF_YEAR, 1)
+            }
+        }
+    }
+
+    val diffMs = target.timeInMillis - now.timeInMillis
+    val diffSec = maxOf(0L, diffMs / 1000)
+    val diffHour = (diffSec / 3600).toInt()
+    val diffMin = ((diffSec % 3600) / 60).toInt()
+    return Pair(diffHour, diffMin)
+}
+
+@Composable
+fun WheelTimePicker(
+    selectedValue: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val items = range.toList()
+    val itemsCount = items.size
+    val virtualCount = itemsCount * 2000 // circular wrapping list size
+
+    val middleIndex = virtualCount / 2
+    val startIndex = if (itemsCount > 0) {
+        middleIndex - (middleIndex % itemsCount) + maxOf(0, items.indexOf(selectedValue))
+    } else {
+        0
+    }
+
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
+
+    LaunchedEffect(selectedValue) {
+        if (!listState.isScrollInProgress && itemsCount > 0) {
+            val currentIndex = listState.firstVisibleItemIndex
+            val currentMappedValue = items[currentIndex % itemsCount]
+            if (currentMappedValue != selectedValue) {
+                val offset = items.indexOf(selectedValue)
+                if (offset >= 0) {
+                    val currentBase = currentIndex - (currentIndex % itemsCount)
+                    val targetIndex = currentBase + offset
+                    listState.scrollToItem(targetIndex)
+                }
+            }
+        }
+    }
+
+    val firstVisibleIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
+    LaunchedEffect(firstVisibleIndex) {
+        if (itemsCount > 0) {
+            val mappedValue = items[firstVisibleIndex % itemsCount]
+            onValueChange(mappedValue)
+        }
+    }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(
+        modifier = modifier
+            .height(130.dp)
+            .background(HardcoreSteel, RoundedCornerShape(12.dp))
+            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)), RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        // Highlighting bar overlay
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .background(Color.White.copy(alpha = 0.05f))
+                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)))
+        )
+
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(vertical = 44.dp),
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            items(virtualCount) { index ->
+                val item = items[index % itemsCount]
+                val isSelected = item == selectedValue
+                val scale = if (isSelected) 1.2f else 0.8f
+                val color = if (isSelected) NeonGreen else SoftGray
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .clickable {
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(index)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = String.format("%02d", item),
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.Normal,
+                            fontSize = if (isSelected) 24.sp else 18.sp
+                        ),
+                        color = color,
+                        modifier = Modifier.graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun AddAlarmDialog(
     alarm: Alarm? = null,
     onDismiss: () -> Unit,
     onConfirm: (hour: Int, minute: Int, label: String, repeatDays: Set<Int>, vibrate: Boolean) -> Unit
 ) {
-    var hourString by remember { mutableStateOf(alarm?.let { String.format("%02d", it.hour) } ?: "06") }
-    var minuteString by remember { mutableStateOf(alarm?.let { String.format("%02d", it.minute) } ?: "00") }
+    var hour by remember { mutableStateOf(alarm?.hour ?: 6) }
+    var minute by remember { mutableStateOf(alarm?.minute ?: 0) }
     var labelText by remember { mutableStateOf(alarm?.label ?: "Morning Gym Session") }
     var vibrateOpt by remember { mutableStateOf(alarm?.vibrate ?: true) }
     var repeatDays by remember {
@@ -348,60 +594,93 @@ fun AddAlarmDialog(
                 )
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Hour and minute inputs
+                // Scrollable Hours & Minutes Picker
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                    modifier = Modifier.fillMaxWidth(0.9f),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextField(
-                        value = hourString,
-                        onValueChange = { hourString = it.take(2) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        textStyle = MaterialTheme.typography.displayMedium.copy(
-                            fontWeight = FontWeight.Black,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = NeonGreen,
-                            unfocusedTextColor = Color.White,
-                            focusedContainerColor = HardcoreSteel,
-                            unfocusedContainerColor = HardcoreSteel,
-                            focusedBorderColor = NeonGreen,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
-                        singleLine = true,
-                        modifier = Modifier.width(90.dp).testTag("dialog_hour_input")
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "HOUR",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonCyan,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        WheelTimePicker(
+                            selectedValue = hour,
+                            range = 0..23,
+                            onValueChange = { hour = it },
+                            modifier = Modifier.fillMaxWidth().testTag("dialog_hour_picker")
+                        )
+                    }
 
                     Text(
                         text = ":",
                         style = MaterialTheme.typography.displayMedium,
                         color = Color.White,
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        modifier = Modifier.padding(top = 18.dp)
                     )
 
-                    TextField(
-                        value = minuteString,
-                        onValueChange = { minuteString = it.take(2) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        textStyle = MaterialTheme.typography.displayMedium.copy(
-                            fontWeight = FontWeight.Black,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "MINUTE",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonCyan,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        WheelTimePicker(
+                            selectedValue = minute,
+                            range = 0..59,
+                            onValueChange = { minute = it },
+                            modifier = Modifier.fillMaxWidth().testTag("dialog_minute_picker")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Next rings countdown display
+                val (nextHours, nextMinutes) = remember(hour, minute, repeatDays) {
+                    calculateNextAlarmDuration(hour, minute, repeatDays)
+                }
+
+                val ringText = if (nextHours == 0 && nextMinutes == 0) {
+                    "Next rings in less than a minute"
+                } else {
+                    val hText = if (nextHours > 0) "$nextHours hour" + (if (nextHours > 1) "s" else "") else ""
+                    val mText = if (nextMinutes > 0) "$nextMinutes minute" + (if (nextMinutes > 1) "s" else "") else ""
+                    val join = if (hText.isNotEmpty() && mText.isNotEmpty()) " and " else ""
+                    "Next rings in $hText$join$mText"
+                }
+
+                Surface(
+                    color = NeonGreen.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, NeonGreen.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth(0.9f)
+                ) {
+                    Text(
+                        text = ringText,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.5.sp
                         ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = NeonGreen,
-                            unfocusedTextColor = Color.White,
-                            focusedContainerColor = HardcoreSteel,
-                            unfocusedContainerColor = HardcoreSteel,
-                            focusedBorderColor = NeonGreen,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
-                        singleLine = true,
-                        modifier = Modifier.width(90.dp).testTag("dialog_minute_input")
+                        color = NeonGreen,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Label field
                 TextField(
@@ -502,11 +781,9 @@ fun AddAlarmDialog(
 
                     Button(
                         onClick = {
-                            val parsedHour = hourString.toIntOrNull() ?: 6
-                            val parsedMin = minuteString.toIntOrNull() ?: 0
                             onConfirm(
-                                parsedHour.coerceIn(0, 23),
-                                parsedMin.coerceIn(0, 59),
+                                hour,
+                                minute,
                                 labelText.ifEmpty { "Morning Workout" },
                                 repeatDays,
                                 vibrateOpt
