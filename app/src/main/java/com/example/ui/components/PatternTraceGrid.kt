@@ -161,9 +161,10 @@ fun PatternTraceGrid(
                 }
             }
 
+            val scale = if (gridSize >= 4) 0.7f else 1.0f
             val textPaint = android.graphics.Paint().apply {
                 color = android.graphics.Color.WHITE
-                textSize = 12.dp.toPx()
+                textSize = (12.dp * scale).toPx()
                 textAlign = android.graphics.Paint.Align.CENTER
                 typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
             }
@@ -178,7 +179,7 @@ fun PatternTraceGrid(
                     // Draw outer metallic shell
                     drawCircle(
                         color = ShinySteel,
-                        radius = 20.dp.toPx(),
+                        radius = (20.dp * scale).toPx(),
                         center = Offset(cx, cy)
                     )
 
@@ -187,9 +188,9 @@ fun PatternTraceGrid(
                     if (inCorrectPattern) {
                         drawCircle(
                             color = patternColor.copy(alpha = 0.4f),
-                            radius = 24.dp.toPx(),
+                            radius = (24.dp * scale).toPx(),
                             center = Offset(cx, cy),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = (2.dp * scale).toPx())
                         )
                     }
 
@@ -198,9 +199,9 @@ fun PatternTraceGrid(
                     if (isSeqHighlighted) {
                         drawCircle(
                             color = patternColor.copy(alpha = 0.75f),
-                            radius = 29.dp.toPx(),
+                            radius = (29.dp * scale).toPx(),
                             center = Offset(cx, cy),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx())
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = (3.dp * scale).toPx())
                         )
                     }
 
@@ -211,7 +212,7 @@ fun PatternTraceGrid(
                         inCorrectPattern -> patternColor.copy(alpha = 0.35f)
                         else -> Color.DarkGray
                     }
-                    val pulseRadius = if (isConnected) 12.dp.toPx() else 8.dp.toPx()
+                    val pulseRadius = if (isConnected) (12.dp * scale).toPx() else (8.dp * scale).toPx()
                     drawCircle(
                         color = dotColor,
                         radius = pulseRadius,
@@ -251,7 +252,7 @@ fun PatternTraceGrid(
                         color = patternColor,
                         start = p1,
                         end = p2,
-                        strokeWidth = 6.dp.toPx(),
+                        strokeWidth = (6.dp * scale).toPx(),
                         cap = StrokeCap.Round
                     )
                 }
@@ -268,7 +269,7 @@ fun PatternTraceGrid(
                             color = patternColor.copy(alpha = 0.8f),
                             start = lastDotCenter,
                             end = touch,
-                            strokeWidth = 4.dp.toPx(),
+                            strokeWidth = (4.dp * scale).toPx(),
                             cap = StrokeCap.Round
                         )
                     }

@@ -439,7 +439,9 @@ fun RingingScreenContent(
 
                 Box(
                     modifier = Modifier
-                        .size(270.dp)
+                        .widthIn(max = 270.dp)
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
                         .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
                         .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(24.dp))
                         .padding(10.dp)
