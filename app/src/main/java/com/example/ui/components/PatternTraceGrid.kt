@@ -77,12 +77,17 @@ fun PatternTraceGrid(
                             // Check if initial touch hit a dot
                             val cellWidth = size.width.toFloat() / (gridSize + 1)
                             val cellHeight = size.height.toFloat() / (gridSize + 1)
+                            val hitRadiusDp = when {
+                                gridSize >= 5 -> 20.dp
+                                gridSize >= 4 -> 25.dp
+                                else -> 35.dp
+                            }
                             val hitIndex = getHitDotIndex(
                                 offset = startOffset,
                                 gridSize = gridSize,
                                 cellWidth = cellWidth,
                                 cellHeight = cellHeight,
-                                hitRadius = 35.dp.toPx()
+                                hitRadius = hitRadiusDp.toPx()
                             )
                             if (hitIndex != -1) {
                                 if (correctPattern.isNotEmpty() && hitIndex == correctPattern[0]) {
@@ -97,12 +102,17 @@ fun PatternTraceGrid(
                             
                             val cellWidth = size.width.toFloat() / (gridSize + 1)
                             val cellHeight = size.height.toFloat() / (gridSize + 1)
+                            val hitRadiusDp = when {
+                                gridSize >= 5 -> 20.dp
+                                gridSize >= 4 -> 25.dp
+                                else -> 35.dp
+                            }
                             val hitIndex = getHitDotIndex(
                                 offset = nextPoint,
                                 gridSize = gridSize,
                                 cellWidth = cellWidth,
                                 cellHeight = cellHeight,
-                                hitRadius = 35.dp.toPx()
+                                hitRadius = hitRadiusDp.toPx()
                             )
                             
                             if (hitIndex != -1 && !connectedDots.contains(hitIndex)) {
@@ -161,10 +171,19 @@ fun PatternTraceGrid(
                 }
             }
 
-            val scale = if (gridSize >= 4) 0.7f else 1.0f
+            val scale = when {
+                gridSize >= 5 -> 0.55f
+                gridSize >= 4 -> 0.7f
+                else -> 1.0f
+            }
+            val textScale = when {
+                gridSize >= 5 -> 0.65f
+                gridSize >= 4 -> 0.8f
+                else -> 1.0f
+            }
             val textPaint = android.graphics.Paint().apply {
                 color = android.graphics.Color.WHITE
-                textSize = (12.dp * scale).toPx()
+                textSize = (11.dp * textScale).toPx()
                 textAlign = android.graphics.Paint.Align.CENTER
                 typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
             }

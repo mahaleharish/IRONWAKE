@@ -223,9 +223,23 @@ fun RingingScreenContent(
 
     LaunchedEffect(settings) {
         val finalSettings = settings ?: UserSettings()
-        val finalGridSize = if (finalSettings.patternDifficulty == "4x4") 4 else 3
-        snoozePattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 5 else 4)
-        stopPattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 8 else 6)
+        val finalGridSize = when (finalSettings.patternDifficulty) {
+            "5x5" -> 5
+            "4x4" -> 4
+            else -> 3
+        }
+        val snoozeLen = when (finalGridSize) {
+            5 -> 6
+            4 -> 5
+            else -> 4
+        }
+        val stopLen = when (finalGridSize) {
+            5 -> 10
+            4 -> 8
+            else -> 6
+        }
+        snoozePattern = generateRandomPattern(finalGridSize, snoozeLen)
+        stopPattern = generateRandomPattern(finalGridSize, stopLen)
     }
 
     // Reset patternMatched when activeMode changes!
@@ -270,7 +284,11 @@ fun RingingScreenContent(
     }
 
     val finalSettings = settings ?: UserSettings()
-    val gridSize = if (finalSettings.patternDifficulty == "4x4") 4 else 3
+    val gridSize = when (finalSettings.patternDifficulty) {
+        "5x5" -> 5
+        "4x4" -> 4
+        else -> 3
+    }
 
     // Pulse animation for max volume indicator
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -461,11 +479,25 @@ fun RingingScreenContent(
                                         Toast.makeText(context, "TRACE INCOMPLETE! KEEP TRACING FORWARD!", Toast.LENGTH_SHORT).show()
                                     } else {
                                         Toast.makeText(context, "TRACE MISMATCH! A new trace path proposed.", Toast.LENGTH_SHORT).show()
-                                        val finalGridSize = if (finalSettings.patternDifficulty == "4x4") 4 else 3
+                                        val finalGridSize = when (finalSettings.patternDifficulty) {
+                                            "5x5" -> 5
+                                            "4x4" -> 4
+                                            else -> 3
+                                        }
+                                        val snoozeLen = when (finalGridSize) {
+                                            5 -> 6
+                                            4 -> 5
+                                            else -> 4
+                                        }
+                                        val stopLen = when (finalGridSize) {
+                                            5 -> 10
+                                            4 -> 8
+                                            else -> 6
+                                        }
                                         if (activeMode == "SNOOZE") {
-                                            snoozePattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 5 else 4)
+                                            snoozePattern = generateRandomPattern(finalGridSize, snoozeLen)
                                         } else {
-                                            stopPattern = generateRandomPattern(finalGridSize, if (finalGridSize == 4) 8 else 6)
+                                            stopPattern = generateRandomPattern(finalGridSize, stopLen)
                                         }
                                     }
                                 }

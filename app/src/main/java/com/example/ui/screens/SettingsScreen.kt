@@ -150,7 +150,7 @@ fun DifficultySelectionCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                listOf("3x3", "4x4").forEach { size ->
+                listOf("3x3", "4x4", "5x5").forEach { size ->
                     val isSelected = selectedDifficulty == size
                     Button(
                         onClick = { onSelect(size) },

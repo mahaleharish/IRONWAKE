@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -108,7 +109,9 @@ fun AlarmListScreen(
                 containerColor = NeonGreen,
                 contentColor = TrueBlack,
                 shape = CircleShape,
-                modifier = Modifier.testTag("add_alarm_button")
+                modifier = Modifier
+                    .padding(bottom = 40.dp)
+                    .testTag("add_alarm_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -134,7 +137,7 @@ fun AlarmListScreen(
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 155.dp, top = 8.dp)
+                    contentPadding = PaddingValues(bottom = 191.dp, top = 8.dp)
                 ) {
                     items(alarms, key = { it.id }) { alarm ->
                         AlarmRowItem(
@@ -164,7 +167,7 @@ fun AlarmListScreen(
                             )
                         )
                     )
-                    .padding(bottom = 96.dp, top = 16.dp, start = 20.dp, end = 20.dp),
+                    .padding(bottom = 132.dp, top = 16.dp, start = 20.dp, end = 20.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
@@ -182,10 +185,11 @@ fun AlarmListScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = "⚡",
-                            fontSize = 20.sp,
-                            color = NeonGreen
+                        Icon(
+                            imageVector = Icons.Default.FitnessCenter,
+                            contentDescription = "Fitness dumbbell icon",
+                            tint = NeonGreen,
+                            modifier = Modifier.size(22.dp)
                         )
                         val quote = remember { homeQuotes.random() }
                         Text(
