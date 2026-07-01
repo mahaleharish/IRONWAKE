@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +39,18 @@ import kotlinx.coroutines.launch
 import com.example.data.model.Alarm
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.AlarmViewModel
+import android.os.Build
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 private val homeQuotes = listOf(
     "The only bad workout is the one that didn't happen.",
@@ -62,6 +75,51 @@ fun AlarmListScreen(
     val alarms by viewModel.alarms.collectAsState()
     var isFormDialogOpen by remember { mutableStateOf(false) }
     var editingAlarm by remember { mutableStateOf<Alarm?>(null) }
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var hasNotificationPermission by remember { mutableStateOf(true) }
+    var hasFullScreenPermission by remember { mutableStateOf(true) }
+
+    fun checkPermissions() {
+        hasNotificationPermission = if (Build.VERSION.SDK_INT >= 33) {
+            ContextCompat.checkSelfPermission(
+                context,
+                "android.permission.POST_NOTIFICATIONS"
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+
+        hasFullScreenPermission = if (Build.VERSION.SDK_INT >= 34) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.canUseFullScreenIntent()
+        } else {
+            true
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                checkPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasNotificationPermission = isGranted
+    }
+
+    val showNotificationWarning = !hasNotificationPermission && Build.VERSION.SDK_INT >= 33
+    val showFullScreenWarning = !hasFullScreenPermission && Build.VERSION.SDK_INT >= 34
 
     Scaffold(
         topBar = {
@@ -129,26 +187,150 @@ fun AlarmListScreen(
                 .padding(innerPadding)
                 .background(TrueBlack)
         ) {
-            if (alarms.isEmpty()) {
-                EmptyStateView()
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 191.dp, top = 8.dp)
-                ) {
-                    items(alarms, key = { it.id }) { alarm ->
-                        AlarmRowItem(
-                            alarm = alarm,
-                            onToggle = { viewModel.toggleAlarm(alarm) },
-                            onDelete = { viewModel.deleteAlarm(alarm) },
-                            onEdit = {
-                                editingAlarm = alarm
-                                isFormDialogOpen = true
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Tactical, high-contrast permission warning card if critical permissions are missing
+                if (showNotificationWarning || showFullScreenWarning) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF2C1313) // Deep dark crimson warning
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFFFF5252)), // Red border
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Warning icon",
+                                    tint = Color(0xFFFF5252),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "CRITICAL PERMISSIONS MISSING",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFFF8A8A),
+                                    letterSpacing = 0.5.sp
+                                )
                             }
-                        )
+
+                            val warningDesc = if (showNotificationWarning && showFullScreenWarning) {
+                                "Both Notification and Full-Screen alarm permissions are disabled. The full-screen workout pattern trace screen cannot launch when your alarm rings!"
+                            } else if (showNotificationWarning) {
+                                "Notification permission is disabled. Without notifications, the background alarm service is restricted and cannot show the wake-up pattern screen!"
+                            } else {
+                                "Full-screen alarm launch permission is disabled. Android will block the wake-up pattern screen from opening when the alarm sounds!"
+                            }
+
+                            Text(
+                                text = warningDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.85f),
+                                lineHeight = 16.sp
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (showNotificationWarning) {
+                                    Button(
+                                        onClick = {
+                                            if (Build.VERSION.SDK_INT >= 33) {
+                                                notificationLauncher.launch("android.permission.POST_NOTIFICATIONS")
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFFF5252),
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f),
+                                        contentPadding = PaddingValues(vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Grant Notifications",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                if (showFullScreenWarning) {
+                                    Button(
+                                        onClick = {
+                                            if (Build.VERSION.SDK_INT >= 34) {
+                                                val intent = Intent("android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT").apply {
+                                                    data = android.net.Uri.parse("package:${context.packageName}")
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                try {
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                        data = android.net.Uri.parse("package:${context.packageName}")
+                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                    context.startActivity(fallback)
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = NeonGreen,
+                                            contentColor = TrueBlack
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f),
+                                        contentPadding = PaddingValues(vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Allow Full Screen",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (alarms.isEmpty()) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        EmptyStateView()
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(bottom = 191.dp, top = 8.dp)
+                    ) {
+                        items(alarms, key = { it.id }) { alarm ->
+                            AlarmRowItem(
+                                alarm = alarm,
+                                onToggle = { viewModel.toggleAlarm(alarm) },
+                                onDelete = { viewModel.deleteAlarm(alarm) },
+                                onEdit = {
+                                    editingAlarm = alarm
+                                    isFormDialogOpen = true
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -482,10 +664,26 @@ fun WheelTimePicker(
         }
     }
 
-    val firstVisibleIndex by remember { derivedStateOf { listState.firstVisibleItemIndex } }
-    LaunchedEffect(firstVisibleIndex) {
+    val centerItemIndex by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val visibleItems = layoutInfo.visibleItemsInfo
+            if (visibleItems.isEmpty()) {
+                startIndex
+            } else {
+                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                val closest = visibleItems.minByOrNull { item ->
+                    val itemCenter = item.offset + item.size / 2
+                    kotlin.math.abs(itemCenter - viewportCenter)
+                }
+                closest?.index ?: startIndex
+            }
+        }
+    }
+
+    LaunchedEffect(centerItemIndex) {
         if (itemsCount > 0) {
-            val mappedValue = items[firstVisibleIndex % itemsCount]
+            val mappedValue = items[centerItemIndex % itemsCount]
             onValueChange(mappedValue)
         }
     }
@@ -516,7 +714,19 @@ fun WheelTimePicker(
         ) {
             items(virtualCount) { index ->
                 val item = items[index % itemsCount]
-                val isSelected = item == selectedValue
+                val isCenter = index == centerItemIndex
+                
+                // Find item layout details to check exact distance to center
+                val itemInfo = listState.layoutInfo.visibleItemsInfo.find { it.index == index }
+                val distance = itemInfo?.let { info ->
+                    val viewportCenter = (listState.layoutInfo.viewportStartOffset + listState.layoutInfo.viewportEndOffset) / 2
+                    val itemCenter = info.offset + info.size / 2
+                    kotlin.math.abs(itemCenter - viewportCenter)
+                } ?: Int.MAX_VALUE
+
+                // Highlight only when close to center (distance < 45% of item size)
+                val isSelected = isCenter && (itemInfo == null || distance < (itemInfo.size * 0.45f))
+                
                 val scale = if (isSelected) 1.2f else 0.8f
                 val color = if (isSelected) NeonGreen else SoftGray
                 
@@ -557,7 +767,7 @@ fun AddAlarmDialog(
 ) {
     var hour by remember { mutableStateOf(alarm?.hour ?: 6) }
     var minute by remember { mutableStateOf(alarm?.minute ?: 0) }
-    var labelText by remember { mutableStateOf(alarm?.label ?: "Morning Gym Session") }
+    var labelText by remember { mutableStateOf(alarm?.label ?: "Morning Workout") }
     var vibrateOpt by remember { mutableStateOf(alarm?.vibrate ?: true) }
     var repeatDays by remember {
         mutableStateOf(

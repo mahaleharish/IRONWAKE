@@ -25,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 
 class AlarmService : Service() {
 
@@ -32,6 +34,11 @@ class AlarmService : Service() {
     private var vibrator: Vibrator? = null
     private var volumeJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+
+    private var currentAlarmId: Int = -1
+    private var currentAlarmLabel: String = "Wake Up & Train!"
+    private var currentAlarmHour: Int = 6
+    private var currentAlarmMinute: Int = 0
 
     companion object {
         private const val CHANNEL_ID = "IronWakeAlarmChannel"
@@ -46,14 +53,38 @@ class AlarmService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "com.example.ACTION_STOP_ALARM") {
+            cleanupMediaAndVibration()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        if (intent?.action == "com.example.ACTION_ACTIVITY_FOREGROUND") {
+            updateNotificationForForeground()
+            return START_STICKY
+        }
+
         val alarmLabel = intent?.getStringExtra("ALARM_LABEL") ?: "Wake Up & Train!"
         val alarmId = intent?.getIntExtra("ALARM_ID", -1) ?: -1
         val alarmHour = intent?.getIntExtra("ALARM_HOUR", 6) ?: 6
         val alarmMinute = intent?.getIntExtra("ALARM_MINUTE", 0) ?: 0
 
+        currentAlarmId = alarmId
+        currentAlarmLabel = alarmLabel
+        currentAlarmHour = alarmHour
+        currentAlarmMinute = alarmMinute
+
         // 1. Build and show the foreground notification immediately
         val notification = buildForegroundNotification(alarmId, alarmLabel, alarmHour, alarmMinute)
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         // 2. Fetch database settings dynamically and trigger Audio & Vibe routines
         serviceScope.launch {
@@ -61,11 +92,15 @@ class AlarmService : Service() {
                 val settings = AppDatabase.getDatabase(applicationContext).userSettingsDao().getSettings() 
                     ?: UserSettings()
                 
-                triggerAlarmMedia(settings)
+                if (isActive) {
+                    triggerAlarmMedia(settings)
+                }
             } catch (e: Exception) {
                 Log.e("AlarmService", "Error reading settings: ${e.message}")
-                // Fallback run with defaults
-                triggerAlarmMedia(UserSettings())
+                if (isActive) {
+                    // Fallback run with defaults
+                    triggerAlarmMedia(UserSettings())
+                }
             }
         }
 
@@ -73,6 +108,25 @@ class AlarmService : Service() {
     }
 
     private fun triggerAlarmMedia(settings: UserSettings) {
+        // Clean up any existing player/vibrator first to prevent multiple instances playing concurrently
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    it.stop()
+                }
+                it.release()
+            }
+            mediaPlayer = null
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Error releasing prior mediaPlayer: ${e.message}")
+        }
+        try {
+            vibrator?.cancel()
+            vibrator = null
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Error canceling prior vibrator: ${e.message}")
+        }
+
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
 
@@ -165,7 +219,7 @@ class AlarmService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("WAKE UP THE BEAST")
+            .setContentTitle("IRONWAKE ALARM ACTIVE")
             .setContentText(label.uppercase())
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setOngoing(true)
@@ -176,6 +230,45 @@ class AlarmService : Service() {
             .setContentIntent(pendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
+    }
+
+    private fun updateNotificationForForeground() {
+        val ringingIntent = Intent(this, AlarmRingingActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("ALARM_ID", currentAlarmId)
+            putExtra("ALARM_LABEL", currentAlarmLabel)
+            putExtra("ALARM_HOUR", currentAlarmHour)
+            putExtra("ALARM_MINUTE", currentAlarmMinute)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            992 + (if (currentAlarmId != -1) currentAlarmId else 0),
+            ringingIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("IRONWAKE ALARM ACTIVE")
+            .setContentText(currentAlarmLabel.uppercase())
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setPriority(NotificationCompat.PRIORITY_LOW) // Suppress/retract any heads-up banner overlay
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setContentIntent(pendingIntent)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun createNotificationChannel() {
@@ -195,19 +288,44 @@ class AlarmService : Service() {
         }
     }
 
-    override fun onDestroy() {
+    private fun cleanupMediaAndVibration() {
+        try {
+            serviceScope.cancel()
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Error cancelling scope: ${e.message}")
+        }
         volumeJob?.cancel()
         try {
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    it.stop()
+                }
+                it.release()
+            }
+            mediaPlayer = null
         } catch (e: Exception) {
             Log.e("AlarmService", "Error stopping player: ${e.message}")
         }
         try {
             vibrator?.cancel()
+            vibrator = null
         } catch (e: Exception) {
             Log.e("AlarmService", "Error stopping vibrator: ${e.message}")
         }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Error stopping foreground status: ${e.message}")
+        }
+    }
+
+    override fun onDestroy() {
+        cleanupMediaAndVibration()
         super.onDestroy()
     }
 }

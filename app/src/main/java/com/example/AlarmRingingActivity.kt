@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -8,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -61,6 +63,21 @@ class AlarmRingingActivity : ComponentActivity() {
     private var alarmMinute: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 1. Force screen-on and over-lockscreen presence BEFORE super.onCreate()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
+
+        // Supports full edge-to-edge displays on modern devices (e.g. Android 15+)
+        enableEdgeToEdge()
+
         super.onCreate(savedInstanceState)
 
         // Parse extras
@@ -69,27 +86,11 @@ class AlarmRingingActivity : ComponentActivity() {
         alarmHour = intent.getIntExtra("ALARM_HOUR", 6)
         alarmMinute = intent.getIntExtra("ALARM_MINUTE", 0)
 
-        // 1. Force screen-on, keyguard dismissal, and over-lockscreen presence
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            val keyguardManager = getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
-            keyguardManager?.requestDismissKeyguard(this, null)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-            )
-        }
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
         // 2. Reject back-button bypass attempts. Users must trace the pattern!
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 // Ignore. Tracing is mandatory to stop the alarm.
-                val explanation = "TRACING PATTERN MANDATORY TO SNOOZE/DISMISS"
+                val explanation = "TRACING PATTERN MANDATORY TO SNOOZE/STOP ALARM"
                 Toast.makeText(this@AlarmRingingActivity, explanation, Toast.LENGTH_SHORT).show()
             }
         })
@@ -123,8 +124,19 @@ class AlarmRingingActivity : ComponentActivity() {
         val database = AppDatabase.getDatabase(applicationContext)
         val scheduler = AlarmScheduler(applicationContext)
 
-        // Stop the alarm audio and haptics immediately
-        val stopServiceIntent = Intent(applicationContext, AlarmService::class.java)
+        // Stop the alarm audio and haptics immediately with multi-layer redundancy
+        val stopServiceIntent = Intent(applicationContext, AlarmService::class.java).apply {
+            action = "com.example.ACTION_STOP_ALARM"
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(stopServiceIntent)
+            } else {
+                startService(stopServiceIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AlarmRingingActivity", "Error calling startService with stop action: ${e.message}")
+        }
         stopService(stopServiceIntent)
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -171,12 +183,29 @@ class AlarmRingingActivity : ComponentActivity() {
                     }
                 }
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@AlarmRingingActivity, "SUCCESSFULLY DISMISSED! LETS CRUSH YOUR WORKOUT!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@AlarmRingingActivity, "SUCCESSFULLY STOPPED! LETS CRUSH YOUR WORKOUT!", Toast.LENGTH_LONG).show()
                 }
             }
 
             // Close ringing activity
             finish()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Notify the service that the activity is in the foreground, suppressing the heads-up banner overlay
+        val updateIntent = Intent(applicationContext, AlarmService::class.java).apply {
+            action = "com.example.ACTION_ACTIVITY_FOREGROUND"
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(updateIntent)
+            } else {
+                startService(updateIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AlarmRingingActivity", "Error updating notification: ${e.message}")
         }
     }
 }
@@ -189,6 +218,25 @@ fun RingingScreenContent(
 ) {
     val context = LocalContext.current
     val database = AppDatabase.getDatabase(context)
+
+    // Three premium dark gym background options
+    val backgroundUrls = remember {
+        listOf(
+            "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80",
+            "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80",
+            "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80"
+        )
+    }
+
+    // Sequentially rotate through the 3 backgrounds every time the alarm screen displays
+    val selectedBgUrl = remember {
+        val prefs = context.getSharedPreferences("ironwake_alarm_prefs", Context.MODE_PRIVATE)
+        val lastIndex = prefs.getInt("last_bg_index", 0)
+        val nextIndex = (lastIndex + 1) % backgroundUrls.size
+        prefs.edit().putInt("last_bg_index", nextIndex).apply()
+        backgroundUrls[lastIndex]
+    }
+
     var settings by remember { mutableStateOf<UserSettings?>(null) }
     var patternMatched by remember { mutableStateOf(false) }
     var activeMode by remember { mutableStateOf("SNOOZE") } // "SNOOZE" or "STOP"
@@ -309,7 +357,7 @@ fun RingingScreenContent(
     ) {
         // 1. Sleek Background Image Placeholder (High quality motivational gym context in grayscale layout)
         AsyncImage(
-            model = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80",
+            model = selectedBgUrl,
             contentDescription = "Gym Background",
             contentScale = ContentScale.Crop,
             colorFilter = ColorFilter.colorMatrix(
@@ -357,7 +405,7 @@ fun RingingScreenContent(
             // Top Bar / Clock Info
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 16.dp)
+                modifier = Modifier.padding(top = 36.dp)
             ) {
                 Text(
                     text = "AWAKEN YOUR POTENTIAL",
@@ -579,7 +627,7 @@ fun RingingScreenContent(
                                 activeMode = "STOP"
                                 Toast.makeText(context, "STOP CHASE DEPLOYED: TRACE THE COMPLEX PATTERN!", Toast.LENGTH_SHORT).show()
                             } else {
-                                Toast.makeText(context, "TRACE THE ADVANCED SEQUENCE TO DISMISS", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "TRACE THE ADVANCED SEQUENCE TO STOP ALARM", Toast.LENGTH_SHORT).show()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -592,7 +640,7 @@ fun RingingScreenContent(
                             .height(52.dp)
                     ) {
                         Text(
-                            text = "DISMISS ALARM",
+                            text = "STOP ALARM",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.5.sp

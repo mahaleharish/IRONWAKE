@@ -1,6 +1,9 @@
 package com.example
 
+import android.os.Build
 import android.os.Bundle
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,6 +25,17 @@ class MainActivity : ComponentActivity() {
         
         // Supports full edge-to-edge displays on modern devices
         enableEdgeToEdge()
+
+        // Request notification permission on startup for Android 13+ to avoid missing alarm ringing UI
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    "android.permission.POST_NOTIFICATIONS"
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 101)
+            }
+        }
 
         // Fetch application-level manual dependency injector references
         val app = application as MainApplication
