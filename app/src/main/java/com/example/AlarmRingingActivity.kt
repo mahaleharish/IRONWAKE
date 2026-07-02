@@ -392,178 +392,175 @@ fun RingingScreenContent(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .verticalScroll(scrollState, enabled = !isDraggingPattern)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            
-            // Top Bar / Clock Info
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 110.dp)
-            ) {
-                Text(
-                    text = "AWAKEN YOUR POTENTIAL",
-                    color = NeonGreen,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        letterSpacing = 4.2.sp,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 16.sp,
-                        shadow = Shadow(
-                            color = NeonGreen.copy(alpha = 0.6f),
-                            offset = Offset(0f, 0f),
-                            blurRadius = 12f
-                        )
-                    ),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                
-                Text(
-                    text = currentTimeString,
-                    style = TextStyle(
-                        fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 72.sp,
-                        color = Color.White,
-                        shadow = Shadow(
-                            color = NeonGreen.copy(alpha = 0.5f),
-                            offset = Offset(0f, 0f),
-                            blurRadius = 24f
-                        )
-                    )
-                )
-                
-                Text(
-                    text = currentDateString,
-                    color = Color.White.copy(alpha = 0.8f),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        letterSpacing = 1.5.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            // Pattern Trace Grid (Center Section)
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.wrapContentSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Action Choice Toggles (Tactile Segmented Button Style)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Button(
-                        onClick = { 
-                            activeMode = "SNOOZE"
-                            patternMatched = false
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (activeMode == "SNOOZE") NeonCyan else Color.Transparent,
-                            contentColor = if (activeMode == "SNOOZE") TrueBlack else Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "SNOOZE ALARM",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.sp)
-                        )
-                    }
-                    Button(
-                        onClick = { 
-                            activeMode = "STOP"
-                            patternMatched = false
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (activeMode == "STOP") BrightRed else Color.Transparent,
-                            contentColor = if (activeMode == "STOP") Color.White else Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "STOP ALARM",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.sp)
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 270.dp)
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(24.dp))
-                        .padding(10.dp)
-                ) {
-                    val currentTargetPattern = if (activeMode == "SNOOZE") snoozePattern else stopPattern
-                    androidx.compose.runtime.key(activeMode) {
-                        PatternTraceGrid(
-                            gridSize = gridSize,
-                            patternColor = if (patternMatched) (if (activeMode == "SNOOZE") NeonCyan else BrightRed) else NeonGreen,
-                            correctPattern = currentTargetPattern,
-                            onPatternComplete = { trace ->
-                                if (trace == currentTargetPattern) {
-                                    patternMatched = true
-                                } else {
-                                    patternMatched = false
-                                    if (trace.size < currentTargetPattern.size) {
-                                        Toast.makeText(context, "TRACE INCOMPLETE! KEEP TRACING FORWARD!", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "TRACE MISMATCH! A new trace path proposed.", Toast.LENGTH_SHORT).show()
-                                        val finalGridSize = when (finalSettings.patternDifficulty) {
-                                            "5x5" -> 5
-                                            "4x4" -> 4
-                                            else -> 3
-                                        }
-                                        val snoozeLen = when (finalGridSize) {
-                                            5 -> 6
-                                            4 -> 5
-                                            else -> 4
-                                        }
-                                        val stopLen = when (finalGridSize) {
-                                            5 -> 10
-                                            4 -> 8
-                                            else -> 6
-                                        }
-                                        if (activeMode == "SNOOZE") {
-                                            snoozePattern = generateRandomPattern(finalGridSize, snoozeLen)
-                                        } else {
-                                            stopPattern = generateRandomPattern(finalGridSize, stopLen)
-                                        }
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                            onDragStateChanged = { dragging ->
-                                isDraggingPattern = dragging
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Bottom controls with beautiful dynamic enabled/disabled styling
+            // Scrollable upper content
             Column(
                 modifier = Modifier
+                    .weight(1.0f)
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .verticalScroll(scrollState, enabled = !isDraggingPattern),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                
+                // Top Bar / Clock Info
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(top = 16.dp)
+                ) {
+                    Text(
+                        text = "AWAKEN YOUR POTENTIAL",
+                        color = NeonGreen,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            letterSpacing = 4.2.sp,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
+                            shadow = Shadow(
+                                color = NeonGreen.copy(alpha = 0.6f),
+                                offset = Offset(0f, 0f),
+                                blurRadius = 12f
+                            )
+                        ),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    
+                    Text(
+                        text = currentTimeString,
+                        style = TextStyle(
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 72.sp,
+                            color = Color.White,
+                            shadow = Shadow(
+                                color = NeonGreen.copy(alpha = 0.5f),
+                                offset = Offset(0f, 0f),
+                                blurRadius = 24f
+                            )
+                        )
+                    )
+                    
+                    Text(
+                        text = currentDateString,
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            letterSpacing = 1.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                // Pattern Trace Grid (Center Section)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.wrapContentSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Action Choice Toggles (Tactile Segmented Button Style)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Button(
+                            onClick = { 
+                                activeMode = "SNOOZE"
+                                patternMatched = false
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (activeMode == "SNOOZE") NeonCyan else Color.Transparent,
+                                contentColor = if (activeMode == "SNOOZE") TrueBlack else Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "SNOOZE ALARM",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.sp)
+                            )
+                        }
+                        Button(
+                            onClick = { 
+                                activeMode = "STOP"
+                                patternMatched = false
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (activeMode == "STOP") BrightRed else Color.Transparent,
+                                contentColor = if (activeMode == "STOP") Color.White else Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "STOP ALARM",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 1.sp)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = 270.dp)
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
+                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(24.dp))
+                            .padding(10.dp)
+                    ) {
+                        val currentTargetPattern = if (activeMode == "SNOOZE") snoozePattern else stopPattern
+                        androidx.compose.runtime.key(activeMode) {
+                            PatternTraceGrid(
+                                gridSize = gridSize,
+                                patternColor = if (patternMatched) (if (activeMode == "SNOOZE") NeonCyan else BrightRed) else NeonGreen,
+                                correctPattern = currentTargetPattern,
+                                onPatternComplete = { trace ->
+                                    if (trace == currentTargetPattern) {
+                                        patternMatched = true
+                                    } else {
+                                        patternMatched = false
+                                        if (trace.size < currentTargetPattern.size) {
+                                            Toast.makeText(context, "TRACE INCOMPLETE! KEEP TRACING FORWARD!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "TRACE MISMATCH! A new trace path proposed.", Toast.LENGTH_SHORT).show()
+                                            val finalGridSize = when (finalSettings.patternDifficulty) {
+                                                "5x5" -> 5
+                                                "4x4" -> 4
+                                                else -> 3
+                                            }
+                                            val snoozeLen = when (finalGridSize) {
+                                                5 -> 6
+                                                4 -> 5
+                                                else -> 4
+                                            }
+                                            val stopLen = when (finalGridSize) {
+                                                5 -> 10
+                                                4 -> 8
+                                                else -> 6
+                                            }
+                                            if (activeMode == "SNOOZE") {
+                                                snoozePattern = generateRandomPattern(finalGridSize, snoozeLen)
+                                            } else {
+                                                stopPattern = generateRandomPattern(finalGridSize, stopLen)
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                                onDragStateChanged = { dragging ->
+                                    isDraggingPattern = dragging
+                                }
+                            )
+                        }
+                    }
+                }
+
                 // Motivational Quote
                 Text(
                     text = selectedQuote,
@@ -573,76 +570,81 @@ fun RingingScreenContent(
                         fontWeight = FontWeight.Medium
                     ),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            }
 
-                // Controls row
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Anchored Bottom Controls
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // SNOOZE control
+                val canSnooze = activeMode == "SNOOZE" && patternMatched
+                Button(
+                    onClick = {
+                        if (canSnooze) {
+                            onUnlocked(true)
+                        } else if (activeMode != "SNOOZE") {
+                            activeMode = "SNOOZE"
+                            Toast.makeText(context, "SNOOZE CHASE DEPLOYED: TRACE THE MOVEMENT!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "TRACE THE MOVEMENT TO SNOOZE", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (canSnooze) NeonCyan else MetalGray.copy(alpha = 0.5f),
+                        contentColor = if (canSnooze) TrueBlack else Color.Gray
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    border = if (canSnooze) BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)) else null
                 ) {
-                    // SNOOZE control
-                    val canSnooze = activeMode == "SNOOZE" && patternMatched
-                    Button(
-                        onClick = {
-                            if (canSnooze) {
-                                onUnlocked(true)
-                            } else if (activeMode != "SNOOZE") {
-                                activeMode = "SNOOZE"
-                                Toast.makeText(context, "SNOOZE CHASE DEPLOYED: TRACE THE MOVEMENT!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "TRACE THE MOVEMENT TO SNOOZE", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (canSnooze) NeonCyan else MetalGray.copy(alpha = 0.5f),
-                            contentColor = if (canSnooze) TrueBlack else Color.Gray
-                        ),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        border = if (canSnooze) BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)) else null
-                    ) {
-                        Text(
-                            "SNOOZE ALARM",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 2.sp
-                            )
+                    Text(
+                        "SNOOZE ALARM",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp
                         )
-                    }
+                    )
+                }
 
-                    // DISMISS control
-                    val canDismiss = activeMode == "STOP" && patternMatched
-                    Button(
-                        onClick = {
-                            if (canDismiss) {
-                                onUnlocked(false)
-                            } else if (activeMode != "STOP") {
-                                activeMode = "STOP"
-                                Toast.makeText(context, "STOP CHASE DEPLOYED: TRACE THE COMPLEX PATTERN!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "TRACE THE ADVANCED SEQUENCE TO STOP ALARM", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (canDismiss) BrightRed else Color.DarkGray.copy(alpha = 0.3f),
-                            contentColor = if (canDismiss) Color.White else Color.Gray
-                        ),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                    ) {
-                        Text(
-                            text = "STOP ALARM",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.5.sp
-                            )
+                // DISMISS control
+                val canDismiss = activeMode == "STOP" && patternMatched
+                Button(
+                    onClick = {
+                        if (canDismiss) {
+                            onUnlocked(false)
+                        } else if (activeMode != "STOP") {
+                            activeMode = "STOP"
+                            Toast.makeText(context, "STOP CHASE DEPLOYED: TRACE THE COMPLEX PATTERN!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "TRACE THE ADVANCED SEQUENCE TO STOP ALARM", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (canDismiss) BrightRed else Color.DarkGray.copy(alpha = 0.3f),
+                        contentColor = if (canDismiss) Color.White else Color.Gray
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Text(
+                        text = "STOP ALARM",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.5.sp
                         )
-                    }
+                    )
                 }
             }
         }

@@ -69,16 +69,23 @@ class AlarmReceiver : BroadcastReceiver() {
                         }
 
                         try {
-                            val ringingIntent = Intent(context, AlarmRingingActivity::class.java).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                                putExtra("ALARM_ID", alarmId)
-                                putExtra("ALARM_LABEL", alarmLabel)
-                                putExtra("ALARM_HOUR", alarmHour)
-                                putExtra("ALARM_MINUTE", alarmMinute)
+                            val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+                            val isLocked = keyguardManager.isKeyguardLocked
+                            if (!isLocked) {
+                                val ringingIntent = Intent(context, AlarmRingingActivity::class.java).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                    putExtra("ALARM_ID", alarmId)
+                                    putExtra("ALARM_LABEL", alarmLabel)
+                                    putExtra("ALARM_HOUR", alarmHour)
+                                    putExtra("ALARM_MINUTE", alarmMinute)
+                                }
+                                context.startActivity(ringingIntent)
+                                Log.d("AlarmReceiver", "Device unlocked. Direct activity launch triggered.")
+                            } else {
+                                Log.d("AlarmReceiver", "Device is locked. Relying solely on full-screen intent notification.")
                             }
-                            context.startActivity(ringingIntent)
                         } catch (e: Exception) {
-                            Log.e("AlarmReceiver", "Direct activity call blocked on background: ${e.message}")
+                            Log.e("AlarmReceiver", "Direct activity call blocked or keyguard check failed: ${e.message}")
                         }
                     }
                 } catch (e: Exception) {
