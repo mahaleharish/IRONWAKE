@@ -59,11 +59,6 @@ class AlarmService : Service() {
             return START_NOT_STICKY
         }
 
-        if (intent?.action == "com.example.ACTION_ACTIVITY_FOREGROUND") {
-            updateNotificationForForeground()
-            return START_STICKY
-        }
-
         val alarmLabel = intent?.getStringExtra("ALARM_LABEL") ?: "Wake Up & Train!"
         val alarmId = intent?.getIntExtra("ALARM_ID", -1) ?: -1
         val alarmHour = intent?.getIntExtra("ALARM_HOUR", 6) ?: 6
@@ -230,45 +225,6 @@ class AlarmService : Service() {
             .setContentIntent(pendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
-    }
-
-    private fun updateNotificationForForeground() {
-        val ringingIntent = Intent(this, AlarmRingingActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("ALARM_ID", currentAlarmId)
-            putExtra("ALARM_LABEL", currentAlarmLabel)
-            putExtra("ALARM_HOUR", currentAlarmHour)
-            putExtra("ALARM_MINUTE", currentAlarmMinute)
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            992 + (if (currentAlarmId != -1) currentAlarmId else 0),
-            ringingIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("IRONWAKE ALARM ACTIVE")
-            .setContentText(currentAlarmLabel.uppercase())
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setOngoing(true)
-            .setAutoCancel(false)
-            .setPriority(NotificationCompat.PRIORITY_LOW) // Suppress/retract any heads-up banner overlay
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setContentIntent(pendingIntent)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
     }
 
     private fun createNotificationChannel() {

@@ -114,6 +114,19 @@ class AlarmRingingActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        
+        // Ensure over-lockscreen presence flags are set on new intent too
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
+
         alarmId = intent.getIntExtra("ALARM_ID", -1)
         alarmLabel = intent.getStringExtra("ALARM_LABEL") ?: "Wake Up & Train!"
         alarmHour = intent.getIntExtra("ALARM_HOUR", 6)
@@ -189,23 +202,6 @@ class AlarmRingingActivity : ComponentActivity() {
 
             // Close ringing activity
             finish()
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Notify the service that the activity is in the foreground, suppressing the heads-up banner overlay
-        val updateIntent = Intent(applicationContext, AlarmService::class.java).apply {
-            action = "com.example.ACTION_ACTIVITY_FOREGROUND"
-        }
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(updateIntent)
-            } else {
-                startService(updateIntent)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("AlarmRingingActivity", "Error updating notification: ${e.message}")
         }
     }
 }
@@ -405,7 +401,7 @@ fun RingingScreenContent(
             // Top Bar / Clock Info
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 36.dp)
+                modifier = Modifier.padding(top = 110.dp)
             ) {
                 Text(
                     text = "AWAKEN YOUR POTENTIAL",

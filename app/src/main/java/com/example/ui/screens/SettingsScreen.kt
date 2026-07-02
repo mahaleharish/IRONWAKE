@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -13,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -101,6 +106,10 @@ fun SettingsScreen(
                     viewModel.saveSettings(settings.copy(progressivelyIncreaseVolume = increase))
                 }
             )
+
+            // Section 4: Fullscreen overlay permissions
+            SettingsHeader(title = "OVERLAY & DISPLAY RIGHTS")
+            OverlayPermissionCard()
 
             Spacer(modifier = Modifier.height(30.dp))
             
@@ -346,6 +355,113 @@ fun FitnessQuoteCard() {
                 color = SoftGray,
                 fontWeight = FontWeight.Bold
             )
+        }
+    }
+}
+
+@Composable
+fun OverlayPermissionCard() {
+    val context = LocalContext.current
+    var isGranted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                AndroidSettings.canDrawOverlays(context)
+            } else {
+                true
+            }
+        )
+    }
+
+    // Refresh status when the screen is viewed
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                isGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    AndroidSettings.canDrawOverlays(context)
+                } else {
+                    true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MetalGray),
+        border = BorderStroke(1.dp, if (isGranted) NeonGreen.copy(alpha = 0.5f) else HardcoreSteel),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Display Over Lockscreen/Apps",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = (if (isGranted) NeonGreen else Color.Red).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, if (isGranted) NeonGreen else Color.Red),
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Text(
+                        text = if (isGranted) "ACTIVE" else "REQUIRED",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Black,
+                        color = if (isGranted) NeonGreen else Color.Red,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            
+            Text(
+                text = "Allows the alarm to launch full screen instantly when the alarm rings, even if your phone is unlocked or currently in use.",
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftGray,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            
+            if (!isGranted) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            try {
+                                val intent = Intent(
+                                    AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                val intent = Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                                context.startActivity(intent)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NeonCyan,
+                        contentColor = TrueBlack
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("grant_overlay_button")
+                ) {
+                    Text(
+                        text = "GRANT PERMISSION",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
         }
     }
 }
