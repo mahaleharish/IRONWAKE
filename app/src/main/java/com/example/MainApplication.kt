@@ -10,7 +10,13 @@ class MainApplication : Application() {
     val repository by lazy { AlarmRepository(database.alarmDao(), database.userSettingsDao()) }
     val scheduler by lazy { AlarmScheduler(this) }
 
+    companion object {
+        lateinit var instance: MainApplication
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
     }
 }

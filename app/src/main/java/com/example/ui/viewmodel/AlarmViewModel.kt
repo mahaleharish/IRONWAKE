@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.MainApplication
+import com.example.AlarmService
+import android.content.Intent
 import com.example.data.model.Alarm
 import com.example.data.model.UserSettings
 import com.example.data.repository.AlarmRepository
@@ -62,6 +64,17 @@ class AlarmViewModel(
                 scheduler.schedule(updated)
             } else {
                 scheduler.cancel(updated)
+                // If this is the active ringing alarm, stop the service immediately
+                if (AlarmService.isRinging && AlarmService.currentlyRingingAlarmId == alarm.id) {
+                    try {
+                        val stopIntent = Intent(MainApplication.instance, AlarmService::class.java).apply {
+                            action = "com.example.ACTION_STOP_ALARM"
+                        }
+                        MainApplication.instance.startService(stopIntent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
         }
     }
@@ -70,6 +83,17 @@ class AlarmViewModel(
         viewModelScope.launch {
             scheduler.cancel(alarm)
             repository.deleteAlarm(alarm)
+            // If this is the active ringing alarm, stop the service immediately
+            if (AlarmService.isRinging && AlarmService.currentlyRingingAlarmId == alarm.id) {
+                try {
+                    val stopIntent = Intent(MainApplication.instance, AlarmService::class.java).apply {
+                        action = "com.example.ACTION_STOP_ALARM"
+                    }
+                    MainApplication.instance.startService(stopIntent)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
     }
 

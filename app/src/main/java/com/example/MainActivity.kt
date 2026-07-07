@@ -17,11 +17,24 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.screens.AlarmListScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
+import android.content.Intent
 import com.example.ui.viewmodel.AlarmViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Redirect if alarm is actively ringing in the background
+        if (AlarmService.isRinging) {
+            val ringingIntent = Intent(this, AlarmRingingActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("ALARM_ID", AlarmService.currentlyRingingAlarmId)
+                putExtra("ALARM_LABEL", AlarmService.currentlyRingingAlarmLabel)
+                putExtra("ALARM_HOUR", AlarmService.currentlyRingingAlarmHour)
+                putExtra("ALARM_MINUTE", AlarmService.currentlyRingingAlarmMinute)
+            }
+            startActivity(ringingIntent)
+        }
         
         // Supports full edge-to-edge displays on modern devices
         enableEdgeToEdge()
@@ -72,6 +85,20 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (AlarmService.isRinging) {
+            val ringingIntent = Intent(this, AlarmRingingActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("ALARM_ID", AlarmService.currentlyRingingAlarmId)
+                putExtra("ALARM_LABEL", AlarmService.currentlyRingingAlarmLabel)
+                putExtra("ALARM_HOUR", AlarmService.currentlyRingingAlarmHour)
+                putExtra("ALARM_MINUTE", AlarmService.currentlyRingingAlarmMinute)
+            }
+            startActivity(ringingIntent)
         }
     }
 }

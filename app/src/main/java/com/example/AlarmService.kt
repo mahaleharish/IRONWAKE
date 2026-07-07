@@ -43,6 +43,12 @@ class AlarmService : Service() {
     companion object {
         private const val CHANNEL_ID = "IronWakeAlarmChannel"
         private const val NOTIFICATION_ID = 881
+
+        var isRinging = false
+        var currentlyRingingAlarmId = -1
+        var currentlyRingingAlarmLabel = "Wake Up & Train!"
+        var currentlyRingingAlarmHour = 6
+        var currentlyRingingAlarmMinute = 0
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -59,6 +65,16 @@ class AlarmService : Service() {
             return START_NOT_STICKY
         }
 
+        if (intent?.action == "com.example.ACTION_NOTIFICATION_DISMISSED") {
+            if (isRinging) {
+                val notification = buildForegroundNotification(currentAlarmId, currentAlarmLabel, currentAlarmHour, currentAlarmMinute)
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.notify(NOTIFICATION_ID, notification)
+                Log.d("AlarmService", "Notification dismissed by user while alarm is active. Reposting to keep it in the tray.")
+            }
+            return START_STICKY
+        }
+
         val alarmLabel = intent?.getStringExtra("ALARM_LABEL") ?: "Wake Up & Train!"
         val alarmId = intent?.getIntExtra("ALARM_ID", -1) ?: -1
         val alarmHour = intent?.getIntExtra("ALARM_HOUR", 6) ?: 6
@@ -68,6 +84,12 @@ class AlarmService : Service() {
         currentAlarmLabel = alarmLabel
         currentAlarmHour = alarmHour
         currentAlarmMinute = alarmMinute
+
+        isRinging = true
+        currentlyRingingAlarmId = alarmId
+        currentlyRingingAlarmLabel = alarmLabel
+        currentlyRingingAlarmHour = alarmHour
+        currentlyRingingAlarmMinute = alarmMinute
 
         // 1. Build and show the foreground notification immediately
         val notification = buildForegroundNotification(alarmId, alarmLabel, alarmHour, alarmMinute)
@@ -213,6 +235,16 @@ class AlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val deleteIntent = Intent(this, AlarmService::class.java).apply {
+            action = "com.example.ACTION_NOTIFICATION_DISMISSED"
+        }
+        val deletePendingIntent = PendingIntent.getService(
+            this,
+            993 + (if (alarmId != -1) alarmId else 0),
+            deleteIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("IRONWAKE ALARM ACTIVE")
             .setContentText(label.uppercase())
@@ -223,6 +255,7 @@ class AlarmService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(pendingIntent, true)
             .setContentIntent(pendingIntent)
+            .setDeleteIntent(deletePendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
@@ -245,6 +278,8 @@ class AlarmService : Service() {
     }
 
     private fun cleanupMediaAndVibration() {
+        isRinging = false
+        currentlyRingingAlarmId = -1
         try {
             serviceScope.cancel()
         } catch (e: Exception) {
