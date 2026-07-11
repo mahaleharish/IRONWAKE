@@ -27,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class AlarmService : Service() {
 
@@ -45,6 +46,12 @@ class AlarmService : Service() {
         private const val NOTIFICATION_ID = 881
 
         var isRinging = false
+            set(value) {
+                field = value
+                isRingingFlow.value = value
+            }
+        val isRingingFlow = MutableStateFlow(false)
+
         var currentlyRingingAlarmId = -1
         var currentlyRingingAlarmLabel = "Wake Up & Train!"
         var currentlyRingingAlarmHour = 6
@@ -67,10 +74,15 @@ class AlarmService : Service() {
 
         if (intent?.action == "com.example.ACTION_NOTIFICATION_DISMISSED") {
             if (isRinging) {
-                val notification = buildForegroundNotification(currentAlarmId, currentAlarmLabel, currentAlarmHour, currentAlarmMinute)
-                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                manager.notify(NOTIFICATION_ID, notification)
-                Log.d("AlarmService", "Notification dismissed by user while alarm is active. Reposting to keep it in the tray.")
+                serviceScope.launch {
+                    delay(500)
+                    if (isRinging) {
+                        val notification = buildForegroundNotification(currentAlarmId, currentAlarmLabel, currentAlarmHour, currentAlarmMinute)
+                        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        manager.notify(NOTIFICATION_ID, notification)
+                        Log.d("AlarmService", "Notification dismissed by user while alarm is active. Reposted after delay to keep it in the tray.")
+                    }
+                }
             }
             return START_STICKY
         }
@@ -85,11 +97,11 @@ class AlarmService : Service() {
         currentAlarmHour = alarmHour
         currentAlarmMinute = alarmMinute
 
-        isRinging = true
         currentlyRingingAlarmId = alarmId
         currentlyRingingAlarmLabel = alarmLabel
         currentlyRingingAlarmHour = alarmHour
         currentlyRingingAlarmMinute = alarmMinute
+        isRinging = true
 
         // 1. Build and show the foreground notification immediately
         val notification = buildForegroundNotification(alarmId, alarmLabel, alarmHour, alarmMinute)

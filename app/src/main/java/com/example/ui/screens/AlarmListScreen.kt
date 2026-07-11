@@ -79,6 +79,9 @@ fun AlarmListScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    val isAlarmRinging by com.example.AlarmService.isRingingFlow.collectAsState(initial = false)
+    val coroutineScope = rememberCoroutineScope()
+
     var hasNotificationPermission by remember { mutableStateOf(true) }
     var hasFullScreenPermission by remember { mutableStateOf(true) }
 
@@ -121,8 +124,9 @@ fun AlarmListScreen(
     val showNotificationWarning = !hasNotificationPermission && Build.VERSION.SDK_INT >= 33
     val showFullScreenWarning = !hasFullScreenPermission && Build.VERSION.SDK_INT >= 34
 
-    Scaffold(
-        topBar = {
+    Box(modifier = modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -179,7 +183,7 @@ fun AlarmListScreen(
             }
         },
         containerColor = TrueBlack,
-        modifier = modifier
+        modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -403,6 +407,73 @@ fun AlarmListScreen(
                 }
             )
         }
+    }
+}
+
+    if (isAlarmRinging) {
+        com.example.RingingScreenContent(
+            label = com.example.AlarmService.currentlyRingingAlarmLabel,
+            illustrationIndex = 0,
+            onUnlocked = { isSnooze ->
+                val database = com.example.data.database.AppDatabase.getDatabase(context)
+                val scheduler = com.example.utils.AlarmScheduler(context)
+
+                val stopServiceIntent = Intent(context, com.example.AlarmService::class.java).apply {
+                    action = "com.example.ACTION_STOP_ALARM"
+                }
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(stopServiceIntent)
+                    } else {
+                        context.startService(stopServiceIntent)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("AlarmListScreen", "Error starting stop service: ${e.message}")
+                }
+                context.stopService(stopServiceIntent)
+
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val alarmId = com.example.AlarmService.currentlyRingingAlarmId
+                    val alarmLabel = com.example.AlarmService.currentlyRingingAlarmLabel
+                    val settings = database.userSettingsDao().getSettings() ?: com.example.data.model.UserSettings()
+
+                    if (isSnooze) {
+                        val snoozeMin = settings.snoozeDurationMinutes
+                        val calendar = Calendar.getInstance().apply {
+                            add(Calendar.MINUTE, snoozeMin)
+                        }
+                        val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
+                        val currentMin = calendar.get(Calendar.MINUTE)
+
+                        val snoozeAlarm = com.example.data.model.Alarm(
+                            id = if (alarmId != -1) (100000 + alarmId) else (9999 + (1..100).random()),
+                            hour = currentHour,
+                            minute = currentMin,
+                            label = "$alarmLabel (Snoozed)",
+                            isEnabled = true,
+                            monday = false, tuesday = false, wednesday = false,
+                            thursday = false, friday = false, saturday = false, sunday = false,
+                            vibrate = true
+                        )
+                        scheduler.schedule(snoozeAlarm)
+
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "SNOOZED FOR $snoozeMin MINUTES. DONT GO BACK TO SLEEP!", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        if (alarmId != -1) {
+                            val activeAlarm = database.alarmDao().getAlarmById(alarmId)
+                            if (activeAlarm != null && activeAlarm.isEnabled) {
+                                scheduler.schedule(activeAlarm)
+                            }
+                        }
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "SUCCESSFULLY STOPPED! LETS CRUSH YOUR WORKOUT!", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        )
     }
 }
 
