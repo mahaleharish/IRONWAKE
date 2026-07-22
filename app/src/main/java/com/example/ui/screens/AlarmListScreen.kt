@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -485,6 +486,7 @@ fun AlarmRowItem(
     onEdit: () -> Unit
 ) {
     Card(
+        onClick = onEdit,
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MetalGray
@@ -551,14 +553,17 @@ fun AlarmRowItem(
                 )
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Edit Button (Pencil Icon)
-                    IconButton(
-                        onClick = onEdit,
+                    // Edit / Modify Button
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                         modifier = Modifier
-                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onEdit)
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
                             .testTag("alarm_edit_${alarm.id}")
                     ) {
                         Icon(
@@ -567,13 +572,24 @@ fun AlarmRowItem(
                             tint = NeonCyan,
                             modifier = Modifier.size(20.dp)
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Modify",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NeonCyan
+                        )
                     }
 
-                    // Delete Button (Recycle Bin Icon)
-                    IconButton(
-                        onClick = onDelete,
+                    // Delete Button
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                         modifier = Modifier
-                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onDelete)
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
                             .testTag("alarm_delete_${alarm.id}")
                     ) {
                         Icon(
@@ -581,6 +597,14 @@ fun AlarmRowItem(
                             contentDescription = "Delete alarm, recycle bin icon",
                             tint = BrightRed,
                             modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Delete",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BrightRed
                         )
                     }
                 }
