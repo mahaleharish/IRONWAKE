@@ -2,6 +2,7 @@ package com.example
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -63,6 +64,7 @@ class AlarmRingingActivity : ComponentActivity() {
     private var alarmMinute: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         // 1. Force screen-on and over-lockscreen presence BEFORE super.onCreate()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)

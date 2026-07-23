@@ -2,6 +2,7 @@ package com.example
 
 import android.os.Build
 import android.os.Bundle
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
@@ -22,6 +23,7 @@ import com.example.ui.viewmodel.AlarmViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         super.onCreate(savedInstanceState)
         
         // Redirect if alarm is actively ringing in the background
